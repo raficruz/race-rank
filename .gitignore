@@ -1,7 +1,9 @@
 **/*.class
-/target/**/*
-/target/
-.settings/**/*
-.settings/
-.project
-.classpath
+app/target/**/*
+app/target/
+app/.settings/**/*
+app/.settings/
+app/.project
+app/.classpath
+app/.checkstyle
+app/lombok-1.18.6.jar
