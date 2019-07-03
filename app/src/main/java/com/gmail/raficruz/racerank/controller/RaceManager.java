@@ -1,5 +1,6 @@
 package com.gmail.raficruz.racerank.controller;
 
+import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
@@ -39,13 +40,15 @@ public class RaceManager {
      * winner has already crossed the finish line
      */
     public void registerLap(final LocalTime lapCompletedAt, final String pilotNumber, final String pilotName,
-            final Integer lapNumber, final Duration lapDuration, final Double averageSpeed) {
+        final Integer lapNumber, final Duration lapDuration, final Double averageSpeed)
+    {
         Pilot currentPilot = Pilot.builder().number(pilotNumber).name(pilotName).build();
         addOneLapToPilot(lapCompletedAt, lapNumber, lapDuration, averageSpeed, currentPilot);
 
     }
 
-    private static void startTheRace() {
+    private static void startTheRace()
+    {
         // Check if exists a started race, if not starts one
         if (Objects.isNull(race)) {
             race = Race.builder().totalLaps(4).build();
@@ -57,28 +60,34 @@ public class RaceManager {
     }
 
     private void addOneLapToPilot(final LocalTime lapCompletedAt, final Integer lapNumber, final Duration lapDuration,
-            final Double averageSpeed, Pilot pilot) {
+        final Double averageSpeed, Pilot pilot)
+    {
         if (!isPilotStartedSpecifiedLap(race, lapNumber, pilot)) {
             Pilot p = getPilot(race, pilot);
             race.getLaps().add(CompletedLap.builder().completedAt(lapCompletedAt).number(lapNumber).pilot(p)
                     .completedIn(lapDuration).averageSpeed(averageSpeed).valid(Boolean.TRUE).build());
         }
-
     }
 
-    private boolean isPilotStartedSpecifiedLap(final Race race, final Integer lapNumber, Pilot pilot) {
+    /**
+     * Checks if one pilot have started
+     */
+    private boolean isPilotStartedSpecifiedLap(final Race race, final Integer lapNumber, Pilot pilot)
+    {
         return race.getLaps().stream().anyMatch(
-                lap -> lap.getPilot().getNumber().equals(pilot.getNumber()) && lap.getNumber().equals(lapNumber));
+            lap -> lap.getPilot().getNumber().equals(pilot.getNumber()) && lap.getNumber().equals(lapNumber));
     }
 
-    private Pilot getPilot(final Race race, Pilot pilot) {
+    /**
+     * Get a registered pilot in race
+     */
+    private Pilot getPilot(final Race race, Pilot pilot)
+    {
         Optional<CompletedLap> l = race.getLaps().stream()
-                .filter(lap -> lap.getPilot().getNumber().equals(pilot.getNumber())).findAny();
-
+            .filter(lap -> lap.getPilot().getNumber().equals(pilot.getNumber())).findAny();
         if (l.isPresent()) {
             return l.get().getPilot();
         }
-
         return pilot;
     }
 
@@ -92,50 +101,83 @@ public class RaceManager {
 
         processRaceEnding(raceSummary);
 
+        //Grouping all laps completed by pilot
         race.getLaps().stream()
         .collect(Collectors.groupingBy(CompletedLap::getPilot))
         .forEach((p, l) -> {
             RacePilotStats pilotStats;
 
-            //Voltas iniciadas após o vencedor cruzar a linha de chegada(final da corrida) serão consideradas invalidas
+            //Set each lap started after the winner arrives as invalid because the race is finished
             l.stream()
             .forEach( v->
                 v.setValid(v.getCompletedAt().minus(v.getCompletedIn()).isBefore(raceSummary.getRaceEnding())));
 
             if (pilotsStatistics.stream().noneMatch(s -> s.getPilot().getNumber().equals(p.getNumber()))) {
                 pilotStats = RacePilotStats.builder().pilot(p).build();
-
                 processCompletedLapsNumber(l, pilotStats);
                 processLastLapCompleted(l, pilotStats);
                 proccessSpeedAverageOfEachPilot(l, pilotStats);
                 proccessTotalTimeSpentForEachPilot(l, pilotStats);
                 processBestLapOfEachPilot(l, pilotStats);
-
                 pilotsStatistics.add(pilotStats);
             }
+
         });
 
         //Process positions in race
         processPositions(pilotsStatistics);
 
-        //Recupera o vencedor
-        Optional<RacePilotStats> winner = pilotsStatistics.stream().findFirst();
+        //Proccess the Race's winner
+        Optional<RacePilotStats> winner = pilotsStatistics.stream()
+            .sorted((s1, s2) -> s1.getArrivalPosition() - s2.getArrivalPosition())
+            .findFirst();
         if(winner.isPresent()) {
             raceSummary.setWinnerOfRace(winner.get().getPilot());
         }
 
-        //Recupera a volta mais rapida
-        race.getLaps().stream()
-            .collect(Collectors.groupingBy(CompletedLap::getPilot))
-            .forEach((p, l) -> raceSummary.setBestLapOfRace(getBestLapOfRace2(l)));
+        //Proccess the fastest lap of each pilot
+        raceSummary.setBestLapOfRace(processBestLapOfRace(race.getLaps()));
 
+        //Proccess how many time each pilot arrived after the winner
         proccessDelayToWinnerOfEachPilot(pilotsStatistics, raceSummary, race.getTotalLaps());
 
         raceSummary.setIndividualAchievements(pilotsStatistics);
 
-        System.out.println(pilotsStatistics);
-        System.out.println(raceSummary);
+        showRaceResult(pilotsStatistics);
+        showRaceSummary(raceSummary);
         return pilotsStatistics;
+    }
+
+    private void showRaceSummary(RaceSummary raceSummary) {
+        System.out.println("======================== MELHOR COLTA DA CORRIDA =======================");
+        System.out.println(
+                "O vencedor da corrida foi "
+                    +raceSummary.getWinnerOfRace().getNumber() + " - "
+                    +raceSummary.getWinnerOfRace().getName());
+        System.out.println(
+            "A volta mais rápida foi volta "
+            + raceSummary.getBestLapOfRace().getNumber()
+            + " de "
+            + raceSummary.getBestLapOfRace().getPilot().getNumber() + " - "
+            + raceSummary.getBestLapOfRace().getPilot().getName()
+            + " com o tempo de "
+            +DurationFormatUtils.formatDurationHMS(raceSummary.getBestLapOfRace().getCompletedIn().toMillis())
+        );
+    }
+
+    private void showRaceResult(List<RacePilotStats> raceStatistics) {
+        System.out.println("========================= RESULTADO DA CORRIDA =========================");
+        System.out.println("Posição\t\tPiloto\t\t\tVoltas\tTempo Total de Prova");
+        raceStatistics.stream()
+        .sorted((s1, s2) -> s1.getArrivalPosition() - s2.getArrivalPosition())
+        .forEach( s -> {
+            System.out.println(
+                s.getArrivalPosition() + "\t\t"
+                + s.getPilot().getNumber() + " - " + s.getPilot().getName() + "\t"
+                + (s.getPilot().getName().length()<=8?"\t":"")
+                + s.getCompletedLapsNumber() + "\t" +
+                DurationFormatUtils.formatDurationHMS(s.getTotalTimeSpent().toMillis()));
+        });
     }
 
     private void processRaceEnding(RaceSummary summary) {
@@ -151,12 +193,12 @@ public class RaceManager {
         }
     }
 
-    private CompletedLap getBestLapOfRace2(List<CompletedLap> l) {
-        Optional<CompletedLap> lap = l.stream()
-                                    .filter(CompletedLap::getValid)
-                                    .sorted( (s1, s2) ->
-                                        (int) (s1.getCompletedIn().toMillis() - s2.getCompletedIn().toMillis()))
-                                    .findFirst();
+    private CompletedLap processBestLapOfRace(List<CompletedLap> l) {
+        Optional<CompletedLap> lap =
+            l.stream()
+                .filter(CompletedLap::getValid)
+                .sorted((s1,s2)-> s1.getCompletedIn().compareTo(s2.getCompletedIn()))
+                .findFirst();
         if(lap.isPresent()) {
             return lap.get();
         }
@@ -170,7 +212,7 @@ public class RaceManager {
     public Map<Pilot, CompletedLap> getBestLapOfEachPilot(List<RacePilotStats> raceStatistics) {
         Map<Pilot, CompletedLap> individualsBestLaps = new HashMap<>();
 
-        LOGGER.log(Level.INFO, "===== MELHORES VOLTAS DE CADA PILOTO =====");
+        System.out.println("\n\n========================== MELHORES VOLTAS DE CADA PILOTO ==========================");
 
         raceStatistics.stream()
         .sorted( (s1, s2) -> (int) (s1.getBestLap().getCompletedIn().toMillis() - s2.getBestLap().getCompletedIn().toMillis()))
@@ -178,14 +220,13 @@ public class RaceManager {
 
             individualsBestLaps.put(ps.getPilot(), ps.getBestLap());
 
-            LOGGER.log(Level.INFO, "A melhor volta de {0}-{1} foi {2} que aconteceu na volta {3}",
-                    new Object[] {
-                            ps.getPilot().getNumber(),
-                            ps.getPilot().getName(),
-                            DurationFormatUtils.formatDurationHMS(ps.getBestLap().getCompletedIn().toMillis()),
-                            ps.getBestLap().getNumber()
-            });
-
+            System.out.println("A melhor volta de " +
+                    ps.getPilot().getNumber() + "-" +
+                    ps.getPilot().getName() +
+                    " foi " +
+                    DurationFormatUtils.formatDurationHMS(ps.getBestLap().getCompletedIn().toMillis()) +
+                    " e aconteceu na volta " +
+                    ps.getBestLap().getNumber());
         });
         return individualsBestLaps;
     }
@@ -195,22 +236,22 @@ public class RaceManager {
      */
     public RacePilotStats getBestLapOfRace(List<RacePilotStats> raceStatistics) {
         
-        LOGGER.log(Level.INFO, "===== MELHOR VOLTA DA CORRIDA =====");
-        
+        System.out.println("\n\n============================== MELHOR VOLTA DA CORRIDA =============================");
+
         Optional<RacePilotStats> bestLapOfRace = raceStatistics.stream()
-                                        .sorted( (s1, s2) ->
-                                            (int) (s1.getBestLap().getCompletedIn().toMillis()
-                                                    - s2.getBestLap().getCompletedIn().toMillis()))
-                                        .findFirst();
+            .sorted((s1,s2)-> s1.getBestLap().getCompletedIn().compareTo(s2.getBestLap().getCompletedIn()))
+                .findFirst();
 
         if(bestLapOfRace.isPresent()) {
-            LOGGER.log(Level.INFO, "A melhor volta da corrida foi {2} efetuado por {0}-{1} na volta {3}",
-                    new Object[] {
-                            bestLapOfRace.get().getPilot().getNumber(),
-                            bestLapOfRace.get().getPilot().getName(),
-                            DurationFormatUtils.formatDurationHMS(bestLapOfRace.get().getBestLap().getCompletedIn().toMillis()),
-                            bestLapOfRace.get().getBestLap().getNumber()
-            });
+            System.out.println("A melhor volta da corrida foi "
+                    + DurationFormatUtils.formatDurationHMS(bestLapOfRace.get().getBestLap().getCompletedIn().toMillis())
+                    + " efetuado por "
+                    + bestLapOfRace.get().getPilot().getNumber()
+                    + "-"
+                    + bestLapOfRace.get().getPilot().getName()
+                    + " na volta "
+                    + bestLapOfRace.get().getBestLap().getNumber()
+                    + ".");
 
             return bestLapOfRace.get();
         }
@@ -223,17 +264,19 @@ public class RaceManager {
     public Map<Pilot, Double> getSpeedAverageOfEachPilot(List<RacePilotStats> raceStatistics) {
         Map<Pilot, Double> individualsSpeedAverage = new HashMap<>();
 
-        LOGGER.log(Level.INFO, "===== MEDIA DE VELOCIDADE DE CADA PILOTO =====");
+        System.out.println("\n\n======================== MEDIA DE VELOCIDADE DE CADA PILOTO ========================");
 
         raceStatistics.stream()
+        .sorted((s1, s2) -> s1.getArrivalPosition() - s2.getArrivalPosition())
         .forEach( ps -> {
             individualsSpeedAverage.put(ps.getPilot(), ps.getSpeedAverage());
-            LOGGER.log(Level.INFO, "A média de velocidade de {0}-{1} foi de {2} KM/H",
-                    new Object[] {
-                            ps.getPilot().getNumber(),
-                            ps.getPilot().getName(),
-                            ps.getSpeedAverage()
-            });
+            System.out.println("A média de velocidade de "
+                    + ps.getPilot().getNumber()
+                    + "-"
+                    + ps.getPilot().getName()
+                    + " foi de "
+                    + new DecimalFormat("0.00").format(ps.getSpeedAverage())
+                    + " KM/H.");
 
         });
         return individualsSpeedAverage;
@@ -241,19 +284,24 @@ public class RaceManager {
 
     public Map<Pilot, Delay> getDelayToWinnerOfEachPilot(List<RacePilotStats> raceStatistics){
         Map<Pilot, Delay> individualsDelay = new HashMap<>();
-        LOGGER.log(Level.INFO, "===== Diferença entre o primeiro e o vencedor =====");
+        System.out.println("\n\n===================== Diferença entre cada piloto e o vencedor =====================");
         
         raceStatistics.stream()
+        .sorted((s1, s2) -> s1.getArrivalPosition() - s2.getArrivalPosition())
         .forEach( ps -> {
             individualsDelay.put(ps.getPilot(), ps.getDelayToWinner());
-            LOGGER.log(Level.INFO, "{0} - {1}-{2} ==> {3} {4} voltas a menos",
-                    new Object[] {
-                            ps.getArrivalPosition(),
-                            ps.getPilot().getNumber(),
-                            ps.getPilot().getName(),
-                            ps.getDelayToWinner().getTimeBehind(),
-                            ps.getDelayToWinner().getLapsBehind()
-            });
+            System.out.println(
+                    ps.getArrivalPosition()
+                    + " - "
+                    + ps.getPilot().getNumber()
+                    + "-"
+                    + ps.getPilot().getName() + "\t"
+                    + (ps.getPilot().getName().length()<8?"\t":"")
+                    + " ==> "
+                    + DurationFormatUtils.formatDurationHMS(ps.getDelayToWinner().getTimeBehind().toMillis())
+                    + " "
+                    + ps.getDelayToWinner().getLapsBehind()
+                    + " voltas a atrás.");
 
         });
         
@@ -296,11 +344,11 @@ public class RaceManager {
     }
 
     private void processLastLapCompleted(List<CompletedLap> l, RacePilotStats pilotStats) {
-        pilotStats.setLastLapCompleted(
-            l.stream()
-            .filter(CompletedLap::getValid)
-            .max((l1, l2) -> (l1.getNumber().compareTo(l2.getNumber()))).get()
-        );
+        Optional<CompletedLap> lastCompleted = l.stream()
+        .filter(CompletedLap::getValid)
+        .max((l1, l2) -> (l1.getNumber().compareTo(l2.getNumber())));
+
+        pilotStats.setLastLapCompleted(lastCompleted.orElse(null));
     }
 
     private void processCompletedLapsNumber(List<CompletedLap> l, RacePilotStats pilotStats) {

@@ -14,7 +14,8 @@ public class RaceLogEntry implements Serializable{
     private static final long serialVersionUID = 3733816270245299321L;
 
     String lapCompletedAt;
-    String pilot;
+    String pilotNumber;
+    String pilotName;
     String lapNumber;
     String lapDuration;
     String averageSpeed;
