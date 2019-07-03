@@ -14,6 +14,7 @@
 		<mockito.version>1.10.19</mockito.version>
 		<lombok.version>1.18.8</lombok.version>
 		<commons-lang.version>3.9</commons-lang.version>
+		<exec.mainClass>com.gmail.raficruz.racerank.RaceRank</exec.mainClass>
 	</properties>
 
 	<dependencies>
